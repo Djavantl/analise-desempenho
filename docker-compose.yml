@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: perf_db
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - perf-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d perf_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  laravel-api:
+    build: ./laravel-app
+    ports:
+      - "8001:8000"
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - perf-network
+
+  django-api:
+    build: ./django-app
+    ports:
+      - "8002:8000"
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - perf-network
+
+  k6:
+    image: grafana/k6:latest
+    volumes:
+      - ./scripts:/scripts
+    networks:
+      - perf-network
+    entrypoint: ["k6"]
+
+volumes:
+  pgdata:
+
+networks:
+  perf-network:
+    driver: bridge

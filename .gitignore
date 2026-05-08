@@ -1,0 +1,21 @@
+# Resultados dos testes k6
+scripts/results/
+
+# Variáveis de ambiente com credenciais
+laravel-app/src/.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+
+# Logs
+*.log
+
+# macOS / Linux
+.DS_Store
+Thumbs.db
+
+# Docker volumes (se gerados localmente)
+pgdata/
