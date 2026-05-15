@@ -2,10 +2,9 @@ SHELL := /bin/bash
 
 COMPOSE := docker compose
 RESULTS_DIR := scripts/results
-WARMUP_DURATION ?= 15s    # fase de aquecimento (descartada na análise)
-MEASURE_DURATION ?= 30s   # janela real de medição
+MEASURE_DURATION ?= 30s
 DURATION ?= $(MEASURE_DURATION)
-COOLDOWN ?= 20            # pausa em segundos após restart (aguarda entrypoint + DNS)
+COOLDOWN ?= 20            # pausa em segundos após restart
 VUS ?= 10
 REPETITIONS ?= 10
 VUS_LIST ?= 10 50 100
@@ -39,15 +38,16 @@ help:
 	@echo "  make ps                 Lista containers"
 	@echo ""
 	@echo "Desempenho:"
-	@echo "  make k6-laravel VUS=50 DURATION=30s"
-	@echo "  make k6-django VUS=50 DURATION=30s"
+	@echo "  make k6-laravel VUS=50 MEASURE_DURATION=30s"
+	@echo "  make k6-django VUS=50 MEASURE_DURATION=30s"
 	@echo "  make bench-laravel      Sobe só Laravel e salva resultado k6"
 	@echo "  make bench-django       Sobe só Django e salva resultado k6"
 	@echo "  make experiment         Roda Laravel e Django isolados com VUs 10/50/100"
+	@echo "  make summary           Gera tabela CSV com medias e desvios por cenario"
 	@echo "  make results            Lista arquivos de resultado"
 	@echo "  make clean-results      Remove resultados gerados pelo k6"
 	@echo ""
-	@echo "Variaveis: VUS=$(VUS), DURATION=$(DURATION), REPETITIONS=$(REPETITIONS), VUS_LIST='$(VUS_LIST)'"
+	@echo "Variaveis: VUS=$(VUS), MEASURE_DURATION=$(MEASURE_DURATION), REPETITIONS=$(REPETITIONS), VUS_LIST='$(VUS_LIST)'"
 
 .PHONY: build
 build:
@@ -112,8 +112,13 @@ ps:
 .PHONY: results clean-results
 results:
 	@find $(RESULTS_DIR) -maxdepth 1 -type f -name '*.json' -print 2>/dev/null | sort || true
+	@find $(RESULTS_DIR) -maxdepth 1 -type f -name '*.csv' -print 2>/dev/null | sort || true
 clean-results:
 	rm -rf $(RESULTS_DIR)
+
+.PHONY: summary
+summary:
+	./scripts/summarize_results.sh
 
 .PHONY: logs logs-laravel logs-django logs-db logs-seed
 logs:
@@ -142,15 +147,15 @@ curl-django:
 .PHONY: k6-laravel k6-django
 k6-laravel: up-laravel
 	./scripts/run_k6_service.sh laravel-api http://localhost:8001 \
+		--env FRAMEWORK=laravel \
 		--env VUS=$(VUS) \
-		--env WARMUP_DURATION=$(WARMUP_DURATION) \
 		--env MEASURE_DURATION=$(MEASURE_DURATION) \
 		/scripts/load_test.js
 
 k6-django: up-django
 	./scripts/run_k6_service.sh django-api http://localhost:8002 \
+		--env FRAMEWORK=django \
 		--env VUS=$(VUS) \
-		--env WARMUP_DURATION=$(WARMUP_DURATION) \
 		--env MEASURE_DURATION=$(MEASURE_DURATION) \
 		/scripts/load_test.js
 
@@ -158,19 +163,21 @@ k6-django: up-django
 bench-laravel: up-laravel
 	mkdir -p $(RESULTS_DIR)
 	./scripts/run_k6_service.sh laravel-api http://localhost:8001 \
+		--env FRAMEWORK=laravel \
+		--env REPETITION=1 \
 		--env VUS=$(VUS) \
-		--env WARMUP_DURATION=$(WARMUP_DURATION) \
 		--env MEASURE_DURATION=$(DURATION) \
-		--out json=/scripts/results/laravel_vu$(VUS).json \
+		--env SUMMARY_FILE=/scripts/results/laravel_vu$(VUS).json \
 		/scripts/load_test.js
 
 bench-django: up-django
 	mkdir -p $(RESULTS_DIR)
 	./scripts/run_k6_service.sh django-api http://localhost:8002 \
+		--env FRAMEWORK=django \
+		--env REPETITION=1 \
 		--env VUS=$(VUS) \
-		--env WARMUP_DURATION=$(WARMUP_DURATION) \
 		--env MEASURE_DURATION=$(DURATION) \
-		--out json=/scripts/results/django_vu$(VUS).json \
+		--env SUMMARY_FILE=/scripts/results/django_vu$(VUS).json \
 		/scripts/load_test.js
 
 .PHONY: experiment experiment-laravel experiment-django
@@ -188,10 +195,11 @@ experiment-laravel: up-laravel
 			$(COMPOSE) restart laravel-api; \
 			sleep $(COOLDOWN); \
 			./scripts/run_k6_service.sh laravel-api http://localhost:8001 \
+				--env FRAMEWORK=laravel \
+				--env REPETITION=$$rep \
 				--env VUS=$$vu \
-				--env WARMUP_DURATION=$(WARMUP_DURATION) \
 				--env MEASURE_DURATION=$(MEASURE_DURATION) \
-				--out json=/scripts/results/laravel_vu$${vu}_rep$${rep}.json \
+				--env SUMMARY_FILE=/scripts/results/laravel_vu$${vu}_rep$${rep}.json \
 				/scripts/load_test.js; \
 		done; \
 	done
@@ -207,10 +215,11 @@ experiment-django: up-django
 			$(COMPOSE) restart django-api; \
 			sleep $(COOLDOWN); \
 			./scripts/run_k6_service.sh django-api http://localhost:8002 \
+				--env FRAMEWORK=django \
+				--env REPETITION=$$rep \
 				--env VUS=$$vu \
-				--env WARMUP_DURATION=$(WARMUP_DURATION) \
 				--env MEASURE_DURATION=$(MEASURE_DURATION) \
-				--out json=/scripts/results/django_vu$${vu}_rep$${rep}.json \
+				--env SUMMARY_FILE=/scripts/results/django_vu$${vu}_rep$${rep}.json \
 				/scripts/load_test.js; \
 		done; \
 	done

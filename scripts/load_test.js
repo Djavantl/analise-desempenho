@@ -8,18 +8,14 @@ const requests  = new Counter('total_requests');
 
 const TARGET_URL  = __ENV.TARGET_URL  || 'http://laravel-api:8000';
 const VUS         = parseInt(__ENV.VUS || '10');
-const WARMUP_DURATION = __ENV.WARMUP_DURATION || '15s'; // descartado da análise
-const MEASURE_DURATION = __ENV.MEASURE_DURATION || '30s'; // janela real de medição
+const MEASURE_DURATION = __ENV.MEASURE_DURATION || '30s';
+const FRAMEWORK = __ENV.FRAMEWORK || 'unknown';
+const REPETITION = parseInt(__ENV.REPETITION || '0');
+const SUMMARY_FILE = __ENV.SUMMARY_FILE || '';
 
-// Fases: ramp-up → estado estável (medição) → ramp-down
-// O k6 coleta métricas em todas as fases, mas o que importa
-// para a análise é o trecho de estado estável (plateau).
 export const options = {
-  stages: [
-    { duration: WARMUP_DURATION, target: VUS }, // aquecimento: sobe gradualmente
-    { duration: MEASURE_DURATION, target: VUS }, // medição: carga constante
-    { duration: '5s',            target: 0   }, // ramp-down
-  ],
+  vus: VUS,
+  duration: MEASURE_DURATION,
   thresholds: {
     error_rate: ['rate<0.05'],
   },
@@ -35,4 +31,56 @@ export default function () {
   latency.add(res.timings.duration);
   errorRate.add(!ok);
   requests.add(1);
+}
+
+function metricValue(data, metric, value, fallback = 0) {
+  return data.metrics[metric]?.values?.[value] ?? fallback;
+}
+
+function round(value, digits = 2) {
+  const factor = 10 ** digits;
+  return Math.round(value * factor) / factor;
+}
+
+export function handleSummary(data) {
+  const totalRequests = metricValue(data, 'total_requests', 'count');
+  const throughput = metricValue(data, 'total_requests', 'rate');
+  const latencyAvg = metricValue(data, 'request_latency_ms', 'avg');
+  const errorRatePercent = metricValue(data, 'error_rate', 'rate') * 100;
+  const checksPassed = metricValue(data, 'checks', 'passes');
+  const checksFailed = metricValue(data, 'checks', 'fails');
+
+  const summary = {
+    tecnologia: FRAMEWORK,
+    concorrencia_vus: VUS,
+    repeticao: REPETITION,
+    endpoint: '/api/items',
+    duracao: MEASURE_DURATION,
+    total_requisicoes: totalRequests,
+    throughput_requisicoes_por_segundo: round(throughput, 2),
+    latencia_media_ms: round(latencyAvg, 2),
+    taxa_erro_percentual: round(errorRatePercent, 2),
+    checks_status_200_sucesso: checksPassed,
+    checks_status_200_falha: checksFailed,
+  };
+
+  const text = [
+    '',
+    'Resumo do experimento',
+    `Tecnologia: ${summary.tecnologia}`,
+    `Concorrencia (VUs): ${summary.concorrencia_vus}`,
+    `Repeticao: ${summary.repeticao}`,
+    `Total de requisicoes: ${summary.total_requisicoes}`,
+    `Throughput: ${summary.throughput_requisicoes_por_segundo} req/s`,
+    `Latencia media: ${summary.latencia_media_ms} ms`,
+    `Taxa de erro: ${summary.taxa_erro_percentual}%`,
+    '',
+  ].join('\n');
+
+  const output = { stdout: text };
+  if (SUMMARY_FILE) {
+    output[SUMMARY_FILE] = `${JSON.stringify(summary, null, 2)}\n`;
+  }
+
+  return output;
 }

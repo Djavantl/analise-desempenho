@@ -9,7 +9,6 @@
 
 set -e
 
-WARMUP_DURATION="${WARMUP_DURATION:-15s}"
 MEASURE_DURATION="${MEASURE_DURATION:-30s}"
 REPETITIONS=10
 RESULTS_DIR="$(dirname "$0")/results"
@@ -34,8 +33,7 @@ CURRENT=0
 echo "======================================================"
 echo " Experimento: Laravel vs Django - Avaliação de Desempenho"
 echo " Total de execuções: $TOTAL"
-echo " Aquecimento por execução: $WARMUP_DURATION"
-echo " Medição por execução: $MEASURE_DURATION"
+echo " Duração por execução: $MEASURE_DURATION"
 echo "======================================================"
 
 for framework in "${!SERVICES[@]}"; do
@@ -50,10 +48,11 @@ for framework in "${!SERVICES[@]}"; do
       echo "[$CURRENT/$TOTAL] Framework: $framework | VUs: $vu | Repetição: $rep"
 
       "$(dirname "$0")/run_k6_service.sh" "$service" "$public_url" \
+        --env FRAMEWORK="$framework" \
+        --env REPETITION="$rep" \
         --env VUS="$vu" \
-        --env WARMUP_DURATION="$WARMUP_DURATION" \
         --env MEASURE_DURATION="$MEASURE_DURATION" \
-        --out "json=/scripts/results/${framework}_vu${vu}_rep${rep}.json" \
+        --env "SUMMARY_FILE=/scripts/results/${framework}_vu${vu}_rep${rep}.json" \
         /scripts/load_test.js
     done
   done
