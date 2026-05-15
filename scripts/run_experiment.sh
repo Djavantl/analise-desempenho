@@ -9,30 +9,38 @@
 
 set -e
 
-DURATION="30s"
+WARMUP_DURATION="${WARMUP_DURATION:-15s}"
+MEASURE_DURATION="${MEASURE_DURATION:-30s}"
 REPETITIONS=10
 RESULTS_DIR="$(dirname "$0")/results"
 
-declare -A TARGETS=(
-  [laravel]="http://laravel-api:8000"
-  [django]="http://django-api:8000"
+declare -A SERVICES=(
+  [laravel]="laravel-api"
+  [django]="django-api"
+)
+
+declare -A PUBLIC_URLS=(
+  [laravel]="http://localhost:8001"
+  [django]="http://localhost:8002"
 )
 
 VUS_LIST=(10 50 100)
 
 mkdir -p "$RESULTS_DIR"
 
-TOTAL=$((${#TARGETS[@]} * ${#VUS_LIST[@]} * REPETITIONS))
+TOTAL=$((${#SERVICES[@]} * ${#VUS_LIST[@]} * REPETITIONS))
 CURRENT=0
 
 echo "======================================================"
 echo " Experimento: Laravel vs Django - Avaliação de Desempenho"
 echo " Total de execuções: $TOTAL"
-echo " Duração por execução: $DURATION"
+echo " Aquecimento por execução: $WARMUP_DURATION"
+echo " Medição por execução: $MEASURE_DURATION"
 echo "======================================================"
 
-for framework in "${!TARGETS[@]}"; do
-  target="${TARGETS[$framework]}"
+for framework in "${!SERVICES[@]}"; do
+  service="${SERVICES[$framework]}"
+  public_url="${PUBLIC_URLS[$framework]}"
   for vu in "${VUS_LIST[@]}"; do
     for rep in $(seq 1 $REPETITIONS); do
       CURRENT=$((CURRENT + 1))
@@ -41,10 +49,10 @@ for framework in "${!TARGETS[@]}"; do
       echo ""
       echo "[$CURRENT/$TOTAL] Framework: $framework | VUs: $vu | Repetição: $rep"
 
-      docker compose run --rm k6 run \
-        --env TARGET_URL="$target" \
+      "$(dirname "$0")/run_k6_service.sh" "$service" "$public_url" \
         --env VUS="$vu" \
-        --env DURATION="$DURATION" \
+        --env WARMUP_DURATION="$WARMUP_DURATION" \
+        --env MEASURE_DURATION="$MEASURE_DURATION" \
         --out "json=/scripts/results/${framework}_vu${vu}_rep${rep}.json" \
         /scripts/load_test.js
     done

@@ -1,11 +1,10 @@
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
 from .models import Item
-from .serializers import ItemSerializer
+from django.http import JsonResponse
 
 
-@api_view(['GET'])
 def item_list(request):
-    items = Item.objects.all()
-    serializer = ItemSerializer(items, many=True)
-    return Response(serializer.data)
+    if request.method != 'GET':
+        return JsonResponse({'detail': 'Method not allowed'}, status=405)
+
+    items = Item.objects.values('id', 'name', 'description', 'price', 'created_at', 'updated_at')
+    return JsonResponse(list(items), safe=False)

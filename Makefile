@@ -2,7 +2,10 @@ SHELL := /bin/bash
 
 COMPOSE := docker compose
 RESULTS_DIR := scripts/results
-DURATION ?= 30s
+WARMUP_DURATION ?= 15s    # fase de aquecimento (descartada na análise)
+MEASURE_DURATION ?= 30s   # janela real de medição
+DURATION ?= $(MEASURE_DURATION)
+COOLDOWN ?= 20            # pausa em segundos após restart (aguarda entrypoint + DNS)
 VUS ?= 10
 REPETITIONS ?= 10
 VUS_LIST ?= 10 50 100
@@ -137,36 +140,36 @@ curl-django:
 	curl -s http://localhost:8002/api/items
 
 .PHONY: k6-laravel k6-django
-k6-laravel:
-	$(COMPOSE) run --rm k6 run \
-		--env TARGET_URL=http://laravel-api:8000 \
+k6-laravel: up-laravel
+	./scripts/run_k6_service.sh laravel-api http://localhost:8001 \
 		--env VUS=$(VUS) \
-		--env DURATION=$(DURATION) \
+		--env WARMUP_DURATION=$(WARMUP_DURATION) \
+		--env MEASURE_DURATION=$(MEASURE_DURATION) \
 		/scripts/load_test.js
 
-k6-django:
-	$(COMPOSE) run --rm k6 run \
-		--env TARGET_URL=http://django-api:8000 \
+k6-django: up-django
+	./scripts/run_k6_service.sh django-api http://localhost:8002 \
 		--env VUS=$(VUS) \
-		--env DURATION=$(DURATION) \
+		--env WARMUP_DURATION=$(WARMUP_DURATION) \
+		--env MEASURE_DURATION=$(MEASURE_DURATION) \
 		/scripts/load_test.js
 
 .PHONY: bench-laravel bench-django
 bench-laravel: up-laravel
 	mkdir -p $(RESULTS_DIR)
-	$(COMPOSE) run --rm k6 run \
-		--env TARGET_URL=http://laravel-api:8000 \
+	./scripts/run_k6_service.sh laravel-api http://localhost:8001 \
 		--env VUS=$(VUS) \
-		--env DURATION=$(DURATION) \
+		--env WARMUP_DURATION=$(WARMUP_DURATION) \
+		--env MEASURE_DURATION=$(DURATION) \
 		--out json=/scripts/results/laravel_vu$(VUS).json \
 		/scripts/load_test.js
 
 bench-django: up-django
 	mkdir -p $(RESULTS_DIR)
-	$(COMPOSE) run --rm k6 run \
-		--env TARGET_URL=http://django-api:8000 \
+	./scripts/run_k6_service.sh django-api http://localhost:8002 \
 		--env VUS=$(VUS) \
-		--env DURATION=$(DURATION) \
+		--env WARMUP_DURATION=$(WARMUP_DURATION) \
+		--env MEASURE_DURATION=$(DURATION) \
 		--out json=/scripts/results/django_vu$(VUS).json \
 		/scripts/load_test.js
 
@@ -175,32 +178,38 @@ experiment: experiment-laravel experiment-django
 	@echo "Experimento concluido. Resultados em $(RESULTS_DIR)"
 
 experiment-laravel: up-laravel
-	mkdir -p $(RESULTS_DIR)
+	mkdir -p $(RESULTS_DIR) && chmod 777 $(RESULTS_DIR)
 	@total=$$(($(words $(VUS_LIST)) * $(REPETITIONS))); current=0; \
 	for vu in $(VUS_LIST); do \
 		for rep in $$(seq 1 $(REPETITIONS)); do \
 			current=$$((current + 1)); \
+			echo ""; \
 			echo "[$$current/$$total] Laravel | VUs: $$vu | Repeticao: $$rep"; \
-			$(COMPOSE) run --rm k6 run \
-				--env TARGET_URL=http://laravel-api:8000 \
+			$(COMPOSE) restart laravel-api; \
+			sleep $(COOLDOWN); \
+			./scripts/run_k6_service.sh laravel-api http://localhost:8001 \
 				--env VUS=$$vu \
-				--env DURATION=$(DURATION) \
+				--env WARMUP_DURATION=$(WARMUP_DURATION) \
+				--env MEASURE_DURATION=$(MEASURE_DURATION) \
 				--out json=/scripts/results/laravel_vu$${vu}_rep$${rep}.json \
 				/scripts/load_test.js; \
 		done; \
 	done
 
 experiment-django: up-django
-	mkdir -p $(RESULTS_DIR)
+	mkdir -p $(RESULTS_DIR) && chmod 777 $(RESULTS_DIR)
 	@total=$$(($(words $(VUS_LIST)) * $(REPETITIONS))); current=0; \
 	for vu in $(VUS_LIST); do \
 		for rep in $$(seq 1 $(REPETITIONS)); do \
 			current=$$((current + 1)); \
+			echo ""; \
 			echo "[$$current/$$total] Django | VUs: $$vu | Repeticao: $$rep"; \
-			$(COMPOSE) run --rm k6 run \
-				--env TARGET_URL=http://django-api:8000 \
+			$(COMPOSE) restart django-api; \
+			sleep $(COOLDOWN); \
+			./scripts/run_k6_service.sh django-api http://localhost:8002 \
 				--env VUS=$$vu \
-				--env DURATION=$(DURATION) \
+				--env WARMUP_DURATION=$(WARMUP_DURATION) \
+				--env MEASURE_DURATION=$(MEASURE_DURATION) \
 				--out json=/scripts/results/django_vu$${vu}_rep$${rep}.json \
 				/scripts/load_test.js; \
 		done; \

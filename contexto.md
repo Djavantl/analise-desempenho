@@ -9,7 +9,7 @@ Experimento fatorial **2×3**: 2 tecnologias × 3 níveis de concorrência × 10
 
 | Camada | Tecnologia |
 | --- | --- |
-| API A | PHP 8.2 + Laravel 11 + Nginx + PHP-FPM |
+| API A | PHP 8.4 + Laravel 11 + Nginx + PHP-FPM |
 | API B | Python 3.12 + Django 4.2 + Gunicorn |
 | Banco de dados | PostgreSQL 15 (instância única compartilhada) |
 | Geração de carga | k6 (Grafana) |
@@ -35,7 +35,7 @@ analise_desempenho/
 ├── db/
 │   └── init.sql              # Cria a tabela `items` no primeiro boot do Postgres
 ├── laravel-app/
-│   ├── Dockerfile            # PHP 8.2-FPM + Nginx + Supervisor
+│   ├── Dockerfile            # PHP 8.4-FPM + Nginx + Supervisor
 │   ├── nginx.conf            # Nginx escutando na porta 8000, proxy para PHP-FPM
 │   ├── supervisord.conf      # Gerencia PHP-FPM e Nginx no mesmo container
 │   ├── entrypoint.sh         # Gera APP_KEY, cacheia config/routes, migra e sobe

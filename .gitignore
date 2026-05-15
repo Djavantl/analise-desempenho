@@ -2,13 +2,20 @@
 scripts/results/
 
 # Variáveis de ambiente com credenciais
-laravel-app/src/.env
+laravel-app/.env
 
-# Python
+# Laravel
+laravel-app/vendor/
+laravel-app/bootstrap/cache/*.php
+laravel-app/storage/
+
+# Python / Django
 __pycache__/
 *.pyc
 *.pyo
 .venv/
+django-app/config/__pycache__/
+django-app/api/__pycache__/
 
 # Logs
 *.log
